@@ -34,5 +34,8 @@ return [
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
     ],
+        'yapay_zeka' => [
+            'url' => env('AI_SERVICE_URL', 'http://ai:8001'),
+    ],
 
 ];
