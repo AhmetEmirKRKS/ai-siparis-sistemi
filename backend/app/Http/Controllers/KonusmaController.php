@@ -3,15 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Models\Konusma;
+use App\Services\SiparisServisi;
 use App\Services\TaslakDegerlendirici;
 use App\Services\YapayZekaServisi;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class KonusmaController extends Controller
 {
     public function __construct(
         private YapayZekaServisi $yapayZeka,
         private TaslakDegerlendirici $degerlendirici,
+        private SiparisServisi $siparisServisi,
     ) {
     }
 
@@ -56,6 +59,37 @@ class KonusmaController extends Controller
         $konusma->mesajlar()->create(['rol' => 'asistan', 'icerik' => $cevap]);
 
         return $this->durum($konusma);
+    }
+
+    public function onayla(Konusma $konusma)
+    {
+        if ($konusma->siparis) {
+            return $this->durum($konusma);
+        }
+
+        $sonuc = $this->degerlendirici->degerlendir($konusma->taslak);
+
+        if ($sonuc['sorular']) {
+            return response()->json(['message' => 'Sipariş bilgileri henüz tamamlanmadı.'], 422);
+        }
+
+        try {
+            $siparis = $this->siparisServisi->olustur($konusma->id, $sonuc);
+
+            if ($siparis->wasRecentlyCreated) {
+                $konusma->mesajlar()->create([
+                    'rol' => 'asistan',
+                    'icerik' => "Siparişiniz alındı. Sipariş numaranız: {$siparis->siparis_no}",
+                ]);
+            }
+        } catch (ValidationException $e) {
+            $konusma->mesajlar()->create([
+                'rol' => 'asistan',
+                'icerik' => 'Sipariş oluşturulamadı: ' . collect($e->errors())->flatten()->join(' '),
+            ]);
+        }
+
+        return $this->durum($konusma->fresh());
     }
 
     private function durum(Konusma $konusma)
